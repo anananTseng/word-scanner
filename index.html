@@ -211,4 +211,112 @@
                 .catch(err => log("❌ 本機錯誤"));
         }
 
-        function runCloud(base64,
+        function runCloud(base64, engineId) {
+            const formData = new FormData();
+            formData.append("base64Image", base64);
+            formData.append("language", "cht");
+            formData.append("OCREngine", engineId);
+            formData.append("isOverlayRequired", "false");
+            formData.append("apikey", MY_KEY);
+
+            fetch("https://api.ocr.space/parse/image", {
+                method: "POST", body: formData
+            })
+            .then(res => res.json())
+            .then(data => {
+                if(!data.IsErroredOnProcessing && data.ParsedResults.length > 0) {
+                    log("雲端完成");
+                    addResults(data.ParsedResults[0].ParsedText);
+                }
+            })
+            .catch(err => log("雲端連線失敗"));
+        }
+
+        function addResults(text) {
+            if(charList.innerHTML.includes('運算')) charList.innerHTML = "";
+            const matches = text.match(/[\u4e00-\u9fa5]/g);
+            if(!matches) return;
+            matches.forEach(char => {
+                charMap.set(char, (charMap.get(char) || 0) + 1);
+            });
+            renderButtons();
+        }
+
+        function renderButtons() {
+            charList.innerHTML = "";
+            let sortedChars = Array.from(charMap.entries()).sort((a, b) => b[1] - a[1]);
+            let finalChars = sortedChars.slice(0, 12);
+
+            finalChars.forEach(([char, score]) => {
+                const btn = document.createElement('div');
+                btn.className = 'char-btn';
+                btn.innerText = char;
+                btn.onclick = () => showFinal(char);
+                if(score > 1) {
+                    const badge = document.createElement('span');
+                    badge.className = 'badge badge-hot';
+                    badge.innerText = '準';
+                    btn.appendChild(badge);
+                    btn.style.borderColor = '#dc3545';
+                }
+                charList.appendChild(btn);
+            });
+            countDiv.innerText = `(顯示前 ${finalChars.length} 個)`;
+        }
+
+        function showFinal(char) {
+            currentSelection = char;
+            selectedCharDiv.innerText = char;
+            finalCard.style.display = 'flex';
+            
+            audioStatus.innerText = "準備發音...";
+            setTimeout(forcePlayAudio, 500);
+        }
+
+        function closeCard() { finalCard.style.display = 'none'; }
+
+        function forcePlayAudio() {
+            if(!currentSelection) return;
+            window.speechSynthesis.cancel();
+
+            const u = new SpeechSynthesisUtterance(currentSelection);
+            u.lang = 'zh-TW';
+            u.rate = 0.8;
+            u.volume = 1;
+
+            if (voices.length === 0) voices = window.speechSynthesis.getVoices();
+            let targetVoice = voices.find(v => v.lang.includes('zh-TW') || v.lang.includes('zh_TW'));
+            if (!targetVoice) targetVoice = voices.find(v => v.lang.includes('zh-HK'));
+            if (!targetVoice) targetVoice = voices.find(v => v.lang.includes('zh-CN'));
+            
+            if (targetVoice) {
+                u.voice = targetVoice;
+                audioStatus.innerText = `🔊 播放中`;
+                audioStatus.style.color = "#28a745";
+            } else {
+                audioStatus.innerText = "⚠️ 使用系統預設發音";
+                audioStatus.style.color = "#d35400";
+            }
+
+            window.speechSynthesis.speak(u);
+            u.onend = function() {
+                audioStatus.innerText = "播放結束";
+                audioStatus.style.color = "#666";
+            };
+        }
+
+        function openDict() {
+            if(currentSelection) window.open(`https://www.moedict.tw/${currentSelection}`, '_blank');
+        }
+
+        function compressImg(img, maxW) {
+            const ctx = canvas.getContext('2d');
+            let w = img.width; let h = img.height;
+            if(w > maxW) { h *= maxW/w; w = maxW; }
+            canvas.width = w; canvas.height = h;
+            ctx.drawImage(img, 0, 0, w, h);
+            return canvas.toDataURL('image/jpeg', 0.7);
+        }
+    </script>
+</body>
+</html>
