@@ -48,4 +48,192 @@
         .candidate-btn {
             display: inline-block; min-width: 50px; height: 50px; 
             line-height: 50px; margin: 5px; padding: 0 10px;
-            background: white; color: #333; font
+            background: white; color: #333; font-size: 26px; font-weight: bold;
+            border: 2px solid #007bff; border-radius: 10px; cursor: pointer;
+        }
+
+        /* 結果區 */
+        #result-area { display: none; margin-top: 20px; background: white; padding: 20px; border-radius: 15px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
+        .big-char { font-size: 80px; color: #d32f2f; font-weight: bold; margin: 10px 0; line-height: 1; }
+
+        .action-btn {
+            font-size: 18px; padding: 10px 20px; margin: 5px;
+            border-radius: 10px; border: none; color: white; cursor: pointer; width: 40%;
+        }
+    </style>
+</head>
+<body>
+
+    <h2>📷 生字掃描機 V5</h2>
+    <p>點擊下方按鈕，選擇「相機」拍照</p>
+
+    <div id="preview-container">
+        <span id="placeholder-text" style="color:#aaa;">照片會出現在這裡</span>
+        <img id="preview-img">
+        <canvas id="canvas" style="display:none;"></canvas>
+    </div>
+
+    <div id="status-text" style="font-weight:bold; color:#007bff; margin-bottom:10px; height:20px;"></div>
+
+    <button id="main-btn" class="btn-camera" onclick="triggerCamera()">
+        📸 啟動相機拍照
+    </button>
+
+    <input type="file" id="file-input" accept="image/*" capture="environment" onchange="handlePhoto(this)">
+
+    <div id="candidates-area" style="display:none; margin-top:15px;">
+        <p style="margin:5px; color:#555;">🤔 請問是哪個字？(請點選)</p>
+        <div id="candidate-list"></div>
+        <button onclick="resetApp()" style="margin-top:15px; background:#eee; border:none; padding:8px 20px; border-radius:20px; color:#555;">🔄 重拍一張</button>
+    </div>
+
+    <div id="result-area">
+        <div>您選擇了：</div>
+        <div id="selected-char" class="big-char"></div>
+        
+        <div style="display:flex; justify-content:center;">
+            <button class="action-btn" style="background:#28a745;" onclick="speakText()">🔊 發音</button>
+            <button class="action-btn" style="background:#ff9800;" onclick="openDict()">📖 解釋</button>
+        </div>
+    </div>
+
+    <script>
+        const fileInput = document.getElementById('file-input');
+        const previewImg = document.getElementById('preview-img');
+        const placeholder = document.getElementById('placeholder-text');
+        const statusText = document.getElementById('status-text');
+        const mainBtn = document.getElementById('main-btn');
+        const candidatesArea = document.getElementById('candidates-area');
+        const candidateList = document.getElementById('candidate-list');
+        const resultArea = document.getElementById('result-area');
+        const canvas = document.getElementById('canvas');
+        
+        let finalChar = "";
+
+        // 1. 觸發原生相機
+        function triggerCamera() {
+            fileInput.click(); // 程式模擬點擊「檔案上傳」
+        }
+
+        // 2. 當使用者拍完照片或選好照片後
+        function handlePhoto(input) {
+            if (input.files && input.files[0]) {
+                const file = input.files[0];
+                
+                // 介面更新
+                statusText.innerText = "⏳ 正在讀取照片...";
+                mainBtn.innerText = "處理中...";
+                mainBtn.classList.add('processing');
+                mainBtn.disabled = true;
+                candidatesArea.style.display = 'none';
+                resultArea.style.display = 'none';
+
+                // 讀取並顯示圖片
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    const img = new Image();
+                    img.onload = function() {
+                        // 顯示預覽
+                        previewImg.src = e.target.result;
+                        previewImg.style.display = 'block';
+                        placeholder.style.display = 'none';
+                        
+                        // 為了加速，將圖片畫到 Canvas 並縮小 (最大寬度 800px)
+                        processImage(img);
+                    };
+                    img.src = e.target.result;
+                }
+                reader.readAsDataURL(file);
+            }
+        }
+
+        // 3. 縮圖與辨識 (關鍵：縮圖可以讓辨識快 3 倍)
+        function processImage(imgElement) {
+            statusText.innerText = "🔍 正在辨識文字...";
+            
+            const ctx = canvas.getContext('2d');
+            const MAX_WIDTH = 800; // 縮小到寬度 800px，兼顧速度與準度
+            let width = imgElement.width;
+            let height = imgElement.height;
+
+            if (width > MAX_WIDTH) {
+                height *= MAX_WIDTH / width;
+                width = MAX_WIDTH;
+            }
+            
+            canvas.width = width;
+            canvas.height = height;
+            ctx.drawImage(imgElement, 0, 0, width, height);
+
+            // 開始 Tesseract 辨識
+            Tesseract.recognize(
+                canvas,
+                'chi_tra',
+                { logger: m => console.log(m) }
+            ).then(({ data: { text } }) => {
+                mainBtn.innerText = "📸 啟動相機拍照";
+                mainBtn.classList.remove('processing');
+                mainBtn.disabled = false;
+
+                // 過濾文字
+                let rawChars = text.match(/[\u4e00-\u9fa5]/g);
+                if(rawChars && rawChars.length > 0) {
+                    let uniqueChars = [...new Set(rawChars)];
+                    showCandidates(uniqueChars.slice(0, 8)); // 取前8個候選字
+                    statusText.innerText = "✅ 辨識完成！";
+                } else {
+                    statusText.innerText = "❌ 沒看到中文字，請重拍";
+                }
+            }).catch(err => {
+                console.error(err);
+                mainBtn.innerText = "📸 啟動相機拍照";
+                mainBtn.disabled = false;
+                statusText.innerText = "❌ 發生錯誤，請重試";
+            });
+        }
+
+        function showCandidates(chars) {
+            candidateList.innerHTML = "";
+            candidatesArea.style.display = "block";
+            candidatesArea.scrollIntoView({ behavior: 'smooth' });
+
+            chars.forEach(char => {
+                let btn = document.createElement("button");
+                btn.className = "candidate-btn";
+                btn.innerText = char;
+                btn.onclick = function() { confirmChar(char); };
+                candidateList.appendChild(btn);
+            });
+        }
+
+        function confirmChar(char) {
+            finalChar = char;
+            document.getElementById('selected-char').innerText = char;
+            candidatesArea.style.display = 'none';
+            resultArea.style.display = 'block';
+            speakText();
+        }
+
+        function speakText() {
+            if(!finalChar) return;
+            let u = new SpeechSynthesisUtterance(finalChar);
+            u.lang = 'zh-TW';
+            u.rate = 0.8;
+            speechSynthesis.speak(u);
+        }
+
+        function openDict() {
+            if(!finalChar) return;
+            window.open(`https://www.moedict.tw/${finalChar}`, '_blank');
+        }
+
+        function resetApp() {
+            fileInput.value = ''; // 清空 input
+            candidatesArea.style.display = 'none';
+            resultArea.style.display = 'none';
+            statusText.innerText = "";
+            window.scrollTo(0, 0);
+        }
+    </script>
+</body>
+</html>
