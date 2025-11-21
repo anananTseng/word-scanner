@@ -3,34 +3,27 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>生字掃描機 V11 (穩定整合版)</title>
+    <title>生字掃描機 V12 (最終完善版)</title>
     <script src='https://unpkg.com/tesseract.js@v2.1.0/dist/tesseract.min.js'></script>
     <style>
-        body { font-family: -apple-system, "Microsoft JhengHei", sans-serif; text-align: center; background-color: #f8f9fa; padding: 15px; margin: 0; }
-        h2 { color: #333; margin: 10px 0; }
-
-        /* 系統日誌 (關鍵：讓你知道發生什麼事) */
+        body { font-family: -apple-system, "Microsoft JhengHei", sans-serif; text-align: center; background-color: #f8f9fa; padding: 15px; margin: 0; -webkit-tap-highlight-color: transparent; }
+        
+        /* 日誌區 (除錯用，沒問題可忽略) */
         #log-area {
             background: #333; color: #0f0; font-family: monospace;
-            padding: 10px; border-radius: 8px; margin-bottom: 15px;
-            text-align: left; font-size: 12px; min-height: 60px;
-            overflow-y: auto; max-height: 100px;
-            border: 2px solid #555;
+            padding: 5px; border-radius: 5px; margin-bottom: 10px;
+            text-align: left; font-size: 10px; height: 40px;
+            overflow-y: auto; display: none; /* 預設隱藏，有錯再開 */
         }
-        .log-err { color: #ff5555; }
-        .log-warn { color: #ffeb3b; }
 
         /* API Key 設定 */
         #apikey-section {
             background: #fff3cd; padding: 15px; border-radius: 10px; margin-bottom: 15px;
-            border: 1px solid #ffeeba; text-align: left;
+            border: 1px solid #ffeeba; text-align: left; display: none;
         }
-        input[type="text"] {
-            width: 100%; padding: 10px; margin-top: 5px; box-sizing: border-box;
-            border: 1px solid #ddd; border-radius: 5px; font-size: 16px;
-        }
+        input[type="text"] { width: 100%; padding: 10px; margin-top: 5px; box-sizing: border-box; border-radius: 5px; border: 1px solid #ccc;}
 
-        /* 拍照按鈕 */
+        /* 拍照按鈕區 */
         .upload-btn-wrapper {
             position: relative; overflow: hidden; display: block; width: 100%; max-width: 400px; margin: 0 auto;
         }
@@ -39,291 +32,33 @@
         }
         .btn-style {
             border: 3px dashed #007bff; background-color: white; color: #0056b3;
-            padding: 30px 20px; border-radius: 20px; cursor: pointer;
+            padding: 40px 20px; border-radius: 20px; cursor: pointer;
             display: flex; flex-direction: column; align-items: center;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+            box-shadow: 0 4px 10px rgba(0,0,0,0.05);
         }
-        .btn-style:active { background-color: #eef; }
+        .btn-style:active { background-color: #eef; transform: scale(0.98); }
 
         /* 預覽圖片 */
-        #preview-container { display: none; margin-top: 15px; }
-        #preview-img { max-width: 150px; border-radius: 5px; border: 1px solid #ccc; }
+        #preview-container { display: none; margin-top: 10px; }
+        #preview-img { max-width: 120px; border-radius: 5px; border: 1px solid #ddd; opacity: 0.8; }
 
-        /* 統一候選字區 (最重要的結果區) */
+        /* 候選字區 */
         #candidates-area { display: none; margin-top: 20px; padding: 10px; background: white; border-radius: 15px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
-        #c-list { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; }
+        #c-list { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; padding: 10px; }
         
         .c-btn {
-            width: 60px; height: 60px; line-height: 60px;
+            width: 65px; height: 65px; line-height: 65px;
             background: #fff; border: 2px solid #28a745; border-radius: 12px;
-            font-size: 32px; color: #333; cursor: pointer; font-weight: bold;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-            position: relative;
+            font-size: 34px; color: #333; cursor: pointer; font-weight: bold;
+            box-shadow: 0 3px 5px rgba(0,0,0,0.1); position: relative;
+            transition: transform 0.1s;
         }
-        /* 標記是哪個引擎找到的 */
-        .badge {
-            position: absolute; top: -5px; right: -5px;
-            font-size: 10px; color: white; padding: 2px 5px; border-radius: 4px;
-        }
-        .bg-cloud { background: #007bff; }
-        .bg-local { background: #6c757d; }
-
-        /* 結果與功能 */
-        #final-result { display: none; margin-top: 20px; background: #e8f5e9; padding: 20px; border-radius: 15px; border: 2px solid #c8e6c9; }
-        .big-char { font-size: 100px; color: #d32f2f; font-weight: bold; font-family: "KaiTi", serif; line-height: 1.2; }
+        .c-btn:active { transform: scale(0.9); background: #e8f5e9; }
         
-        .action-btn { 
-            font-size: 18px; padding: 10px 20px; margin: 5px; border: none; border-radius: 50px; color: white; cursor: pointer; 
+        /* 來源標籤 */
+        .badge {
+            position: absolute; top: -8px; right: -8px;
+            font-size: 10px; color: white; padding: 2px 6px; border-radius: 10px;
         }
-    </style>
-</head>
-<body>
-
-    <h2>🔍 生字掃描機 V11</h2>
-
-    <div id="log-area">系統準備就緒...<br>等待拍照...</div>
-
-    <div id="apikey-section" style="display:none;">
-        <label style="font-weight:bold; color:#856404;">🔑 需要雲端 Key</label>
-        <div style="font-size:12px; color:#666;">請輸入 OCR.space Key 以啟用雲端強力辨識</div>
-        <input type="text" id="api-key-input" placeholder="貼上 Key" onchange="saveKey()">
-    </div>
-
-    <div class="upload-btn-wrapper" id="upload-wrapper">
-        <div class="btn-style">
-            <div style="font-size: 30px;">📸</div>
-            <div style="font-size: 18px; font-weight: bold; margin-top: 5px;">拍照 / 選圖</div>
-            <div style="font-size: 12px; color: #888;">(整合三核心運算)</div>
-        </div>
-        <input type="file" accept="image/*" onchange="handleFiles(this.files)">
-    </div>
-
-    <div id="preview-container">
-        <img id="preview-img">
-    </div>
-
-    <div id="candidates-area">
-        <p style="margin:0 0 10px 0; font-weight:bold; color:#007bff;">👇 請點選正確的字：</p>
-        <div id="c-list"></div>
-        <button onclick="location.reload()" style="margin-top:20px; background:#eee; border:none; padding:8px 20px; border-radius:20px;">🔄 重拍</button>
-    </div>
-
-    <div id="final-result">
-        <div>您選擇了：</div>
-        <div id="selected-char" class="big-char">?</div>
-        <div>
-            <button class="action-btn" style="background:#28a745;" onclick="speak()">🔊 發音</button>
-            <button class="action-btn" style="background:#17a2b8;" onclick="dict()">📖 解釋</button>
-        </div>
-    </div>
-
-    <canvas id="process-canvas" style="display:none;"></canvas>
-
-    <script>
-        const logArea = document.getElementById('log-area');
-        const apiKeySection = document.getElementById('apikey-section');
-        const apiKeyInput = document.getElementById('api-key-input');
-        const candidatesArea = document.getElementById('candidates-area');
-        const cList = document.getElementById('c-list');
-        const finalResult = document.getElementById('final-result');
-        const selectedCharDiv = document.getElementById('selected-char');
-        const canvas = document.getElementById('process-canvas');
-        const previewImg = document.getElementById('preview-img');
-
-        let foundChars = new Set(); // 用來儲存所有找到的字 (避免重複)
-        let selectedChar = "";
-
-        // 寫日誌功能
-        function log(msg, type="info") {
-            const span = document.createElement('div');
-            span.innerHTML = `> ${msg}`;
-            if(type === 'error') span.className = 'log-err';
-            logArea.appendChild(span);
-            logArea.scrollTop = logArea.scrollHeight; // 自動捲動到底部
-        }
-
-        // 初始化
-        window.onload = function() {
-            const key = localStorage.getItem('ocr_api_key');
-            if(key) {
-                apiKeyInput.value = key;
-                log("已讀取 API Key: " + key.substring(0,4) + "****");
-            } else {
-                log("⚠️ 未偵測到 API Key，請先輸入", "warn");
-                apiKeySection.style.display = 'block';
-            }
-        }
-
-        function saveKey() {
-            const key = apiKeyInput.value.trim();
-            if(key) {
-                localStorage.setItem('ocr_api_key', key);
-                log("✅ Key 已儲存！");
-                apiKeySection.style.display = 'none';
-            }
-        }
-
-        // 處理檔案
-        function handleFiles(files) {
-            if(files.length === 0) return;
-
-            const key = localStorage.getItem('ocr_api_key');
-            if(!key) {
-                alert("請先輸入 API Key 喔！");
-                apiKeySection.style.display = 'block';
-                return;
-            }
-
-            // UI 重置
-            document.getElementById('upload-wrapper').style.display = 'none';
-            document.getElementById('preview-container').style.display = 'block';
-            candidatesArea.style.display = 'block'; // 先顯示出來，不然會覺得沒反應
-            cList.innerHTML = "<div style='color:#888; font-size:14px;'>⏳ 正在用力辨識中...</div>";
-            foundChars.clear();
-
-            const file = files[0];
-            log("讀取圖片中...");
-            
-            const reader = new FileReader();
-            reader.onload = function(e) {
-                const img = new Image();
-                img.onload = function() {
-                    previewImg.src = e.target.result;
-                    startRecognition(img, key);
-                };
-                img.src = e.target.result;
-            };
-            reader.readAsDataURL(file);
-        }
-
-        // 啟動所有辨識
-        function startRecognition(img, key) {
-            // 1. 本機 Tesseract
-            runLocal(img);
-
-            // 2. 雲端辨識 (壓縮圖片)
-            const base64 = compressImage(img, 1000);
-            
-            // 平行發送兩個雲端請求 (Engine 1 和 2)
-            runCloud(base64, key, '2', '雲端手寫');
-            
-            // 延遲一點點發送第二個，避免 API 限制
-            setTimeout(() => {
-                runCloud(base64, key, '1', '雲端印刷');
-            }, 1000);
-        }
-
-        // 本機辨識
-        function runLocal(img) {
-            log("啟動本機 Tesseract...");
-            const ctx = canvas.getContext('2d');
-            canvas.width = img.width; canvas.height = img.height;
-            ctx.drawImage(img, 0, 0);
-
-            Tesseract.recognize(canvas, 'chi_tra')
-            .then(({ data: { text } }) => {
-                log("本機辨識完成");
-                processText(text, 'local');
-            })
-            .catch(err => log("本機錯誤: " + err, 'error'));
-        }
-
-        // 雲端辨識
-        function runCloud(base64, key, engineId, name) {
-            log(`啟動${name} (Engine ${engineId})...`);
-            
-            const formData = new FormData();
-            formData.append("base64Image", base64);
-            formData.append("language", "cht");
-            formData.append("OCREngine", engineId);
-            formData.append("isOverlayRequired", "false");
-
-            fetch("https://api.ocr.space/parse/image", {
-                method: "POST", headers: { "apikey": key }, body: formData
-            })
-            .then(res => res.json())
-            .then(data => {
-                if(data.IsErroredOnProcessing) {
-                    log(`❌ ${name} 失敗: ${data.ErrorMessage}`, 'error');
-                } else {
-                    log(`✅ ${name} 成功回傳`);
-                    let text = (data.ParsedResults && data.ParsedResults.length > 0) ? data.ParsedResults[0].ParsedText : "";
-                    processText(text, 'cloud');
-                }
-            })
-            .catch(err => log(`❌ ${name} 連線錯誤`, 'error'));
-        }
-
-        // 統一處理並顯示結果
-        function processText(text, source) {
-            // 清除「正在辨識中」的字樣
-            const loadingMsg = cList.querySelector('div');
-            if(loadingMsg && loadingMsg.innerText.includes('辨識中')) {
-                cList.innerHTML = "";
-            }
-
-            // 抓取中文
-            let chars = text.match(/[\u4e00-\u9fa5]/g);
-            if(!chars) return;
-
-            let newCount = 0;
-            chars.forEach(char => {
-                if(!foundChars.has(char)) {
-                    foundChars.add(char);
-                    addCharButton(char, source);
-                    newCount++;
-                }
-            });
-
-            if(newCount > 0) {
-                log(`> 新增了 ${newCount} 個候選字`);
-            }
-        }
-
-        function addCharButton(char, source) {
-            let btn = document.createElement("div");
-            btn.className = "c-btn";
-            btn.innerText = char;
-            
-            // 標籤 (分辨是雲端還是本機找到的)
-            let badge = document.createElement("span");
-            badge.className = "badge " + (source === 'cloud' ? 'bg-cloud' : 'bg-local');
-            badge.innerText = source === 'cloud' ? '☁️' : '📱';
-            btn.appendChild(badge);
-
-            btn.onclick = function() { showFinal(char); };
-            cList.appendChild(btn);
-        }
-
-        function compressImage(img, maxWidth) {
-            const ctx = canvas.getContext('2d');
-            let w = img.width; let h = img.height;
-            if (w > maxWidth) { h *= maxWidth / w; w = maxWidth; }
-            canvas.width = w; canvas.height = h;
-            ctx.drawImage(img, 0, 0, w, h);
-            return canvas.toDataURL('image/jpeg', 0.7);
-        }
-
-        // 最終功能
-        function showFinal(char) {
-            selectedChar = char;
-            candidatesArea.style.display = 'none';
-            finalResult.style.display = 'block';
-            selectedCharDiv.innerText = char;
-            speak();
-        }
-
-        function speak() {
-            if(!selectedChar) return;
-            let u = new SpeechSynthesisUtterance(selectedChar);
-            u.lang = 'zh-TW';
-            speechSynthesis.speak(u);
-        }
-
-        function dict() {
-            if(!selectedChar) return;
-            window.open(`https://www.moedict.tw/${selectedChar}`, '_blank');
-        }
-    </script>
-</body>
-</html>
+        .bg-cloud { background: #007bff; border: 1px solid white; }
+        .bg-local { background: #6c757d; border: 1px solid white
