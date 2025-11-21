@@ -3,10 +3,24 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>生字掃描機 V17 (發音修復)</title>
+    <title>生字掃描機 V18 (貼心引導版)</title>
     <style>
-        body { font-family: -apple-system, BlinkMacSystemFont, "Microsoft JhengHei", sans-serif; text-align: center; background-color: #f4f4f4; padding: 10px; margin: 0; }
-        h2 { color: #333; margin: 10px 0; font-size: 24px; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Microsoft JhengHei", sans-serif; text-align: center; background-color: #f4f4f4; padding: 0; margin: 0; }
+        
+        /* 頂部警告橫幅 (預設隱藏) */
+        #browser-warning {
+            display: none; /* 程式偵測到 LINE 才會打開 */
+            background-color: #ff9800; color: white; 
+            padding: 12px; font-size: 14px; text-align: left;
+            line-height: 1.5; box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+        }
+        .warning-icon { font-size: 18px; margin-right: 5px; vertical-align: middle; }
+        .highlight { font-weight: bold; text-decoration: underline; }
+
+        h2 { color: #333; margin: 15px 0; font-size: 24px; }
+
+        /* 內容容器 (加一點 padding 避免貼邊) */
+        .container { padding: 10px; }
 
         /* 日誌區 */
         #sys-log {
@@ -54,30 +68,36 @@
         }
         .action-btn:active { transform: scale(0.95); }
         
-        /* 發音狀態顯示 */
         #audio-status { margin-top: 10px; color: #666; font-size: 14px; height: 20px; }
-        
         .btn-close { margin-top: 30px; background: transparent; color: #888; border: 1px solid #ccc; font-size: 14px; padding: 8px 20px; border-radius: 20px;}
     </style>
 </head>
 <body>
 
-    <h2>🔊 生字掃描機 V17</h2>
-    <div id="sys-log">系統就緒<br></div>
-
-    <div class="main-btn" id="scan-btn">
-        <div style="font-size: 40px;">📸</div>
-        <div style="font-size: 20px; font-weight: bold;">拍照 / 選照片</div>
-        <div style="font-size: 14px; color: #666;">(點擊開始)</div>
-        <input type="file" class="hidden-input" accept="image/*" onchange="handleFile(this.files)">
+    <div id="browser-warning">
+        <span class="warning-icon">⚠️</span> <strong>偵測到 LINE / FB 瀏覽器</strong><br>
+        發音功能可能會失效。<br>
+        <span style="font-size:12px; opacity:0.9;">請點選右上角選單 <span style="border:1px solid white; padding:0 4px;">⋮</span> 或 <span style="border:1px solid white; padding:0 4px;">≡</span><br>選擇 <span class="highlight">「使用預設瀏覽器開啟」</span> (Chrome/Safari)。</span>
     </div>
 
-    <div id="workspace">
-        <img id="preview-img">
-        <div style="margin-top:10px; color:#007bff; font-weight:bold;">👇 請點選正確的字：</div>
-        <div id="char-list"></div>
-        <div style="margin-top:10px; font-size:12px; color:#999;" id="result-count"></div>
-        <button onclick="location.reload()" style="margin-top:20px; padding:10px 30px; border-radius:20px; border:none; background:#eee;">🔄 重來</button>
+    <div class="container">
+        <h2>🚀 生字掃描機 V18</h2>
+        <div id="sys-log">系統就緒<br></div>
+
+        <div class="main-btn" id="scan-btn">
+            <div style="font-size: 40px;">📸</div>
+            <div style="font-size: 20px; font-weight: bold;">拍照 / 選照片</div>
+            <div style="font-size: 14px; color: #666;">(點擊開始)</div>
+            <input type="file" class="hidden-input" accept="image/*" onchange="handleFile(this.files)">
+        </div>
+
+        <div id="workspace">
+            <img id="preview-img">
+            <div style="margin-top:10px; color:#007bff; font-weight:bold;">👇 請點選正確的字：</div>
+            <div id="char-list"></div>
+            <div style="margin-top:10px; font-size:12px; color:#999;" id="result-count"></div>
+            <button onclick="location.reload()" style="margin-top:20px; padding:10px 30px; border-radius:20px; border:none; background:#eee;">🔄 重來</button>
+        </div>
     </div>
 
     <div id="final-card">
@@ -116,16 +136,29 @@
         const canvas = document.getElementById('canvas');
         const countDiv = document.getElementById('result-count');
         const audioStatus = document.getElementById('audio-status');
+        const warningBanner = document.getElementById('browser-warning');
         
         let charMap = new Map(); 
         let currentSelection = "";
         let voices = [];
 
-        // --- 初始化語音 ---
-        // 這是關鍵：某些瀏覽器需要時間載入語音包
-        window.speechSynthesis.onvoiceschanged = function() {
-            voices = window.speechSynthesis.getVoices();
-            log(`語音包載入: ${voices.length} 個`);
+        // --- 0. 瀏覽器偵測 (新功能) ---
+        window.onload = function() {
+            const ua = navigator.userAgent || navigator.vendor || window.opera;
+            // 偵測 LINE 或 Facebook 相關字串
+            if ((ua.indexOf("Line") > -1) || (ua.indexOf("FBAN") > -1) || (ua.indexOf("FBAV") > -1)) {
+                warningBanner.style.display = 'block';
+                log("⚠️ 偵測到 In-App Browser (LINE/FB)");
+            } else {
+                log("瀏覽器環境正常 (Chrome/Safari)");
+            }
+
+            // 預載語音
+            if('speechSynthesis' in window) {
+                window.speechSynthesis.onvoiceschanged = function() {
+                    voices = window.speechSynthesis.getVoices();
+                };
+            }
         };
 
         function log(msg) {
@@ -178,131 +211,4 @@
                 .catch(err => log("❌ 本機錯誤"));
         }
 
-        function runCloud(base64, engineId) {
-            const formData = new FormData();
-            formData.append("base64Image", base64);
-            formData.append("language", "cht");
-            formData.append("OCREngine", engineId);
-            formData.append("isOverlayRequired", "false");
-            formData.append("apikey", MY_KEY);
-
-            fetch("https://api.ocr.space/parse/image", {
-                method: "POST", body: formData
-            })
-            .then(res => res.json())
-            .then(data => {
-                if(!data.IsErroredOnProcessing && data.ParsedResults.length > 0) {
-                    log("雲端完成");
-                    addResults(data.ParsedResults[0].ParsedText);
-                }
-            })
-            .catch(err => log("雲端連線失敗"));
-        }
-
-        function addResults(text) {
-            if(charList.innerHTML.includes('運算')) charList.innerHTML = "";
-            const matches = text.match(/[\u4e00-\u9fa5]/g);
-            if(!matches) return;
-            matches.forEach(char => {
-                charMap.set(char, (charMap.get(char) || 0) + 1);
-            });
-            renderButtons();
-        }
-
-        function renderButtons() {
-            charList.innerHTML = "";
-            let sortedChars = Array.from(charMap.entries()).sort((a, b) => b[1] - a[1]);
-            let finalChars = sortedChars.slice(0, 12);
-
-            finalChars.forEach(([char, score]) => {
-                const btn = document.createElement('div');
-                btn.className = 'char-btn';
-                btn.innerText = char;
-                btn.onclick = () => showFinal(char);
-                if(score > 1) {
-                    const badge = document.createElement('span');
-                    badge.className = 'badge badge-hot';
-                    badge.innerText = '準';
-                    btn.appendChild(badge);
-                    btn.style.borderColor = '#dc3545';
-                }
-                charList.appendChild(btn);
-            });
-            countDiv.innerText = `(顯示前 ${finalChars.length} 個)`;
-        }
-
-        // --- 互動區 ---
-        function showFinal(char) {
-            currentSelection = char;
-            selectedCharDiv.innerText = char;
-            finalCard.style.display = 'flex';
-            
-            // 延遲自動播放，並顯示狀態
-            audioStatus.innerText = "準備發音...";
-            setTimeout(forcePlayAudio, 500);
-        }
-
-        function closeCard() { finalCard.style.display = 'none'; }
-
-        // --- 核心發音修復 ---
-        function forcePlayAudio() {
-            if(!currentSelection) return;
-            
-            // 1. 停止正在說的話
-            window.speechSynthesis.cancel();
-
-            // 2. 建立發音物件
-            const u = new SpeechSynthesisUtterance(currentSelection);
-            u.lang = 'zh-TW'; // 預設台灣
-            u.rate = 0.8;     // 速度
-            u.volume = 1;     // 音量最大
-
-            // 3. 尋找最佳語音包 (這是修復重點)
-            if (voices.length === 0) voices = window.speechSynthesis.getVoices();
-            
-            // 優先順序: zh-TW > zh-HK > zh-CN > 任何 zh
-            let targetVoice = voices.find(v => v.lang.includes('zh-TW') || v.lang.includes('zh_TW'));
-            if (!targetVoice) targetVoice = voices.find(v => v.lang.includes('zh-HK'));
-            if (!targetVoice) targetVoice = voices.find(v => v.lang.includes('zh-CN'));
-            if (!targetVoice) targetVoice = voices.find(v => v.lang.includes('zh'));
-
-            if (targetVoice) {
-                u.voice = targetVoice;
-                log(`使用語音: ${targetVoice.name}`);
-                audioStatus.innerText = `🔊 播放中 (${targetVoice.name})`;
-                audioStatus.style.color = "#28a745";
-            } else {
-                log("⚠️ 找不到中文語音包，嘗試使用系統預設");
-                audioStatus.innerText = "⚠️ 使用系統預設發音";
-                audioStatus.style.color = "#d35400";
-            }
-
-            // 4. 播放
-            window.speechSynthesis.speak(u);
-
-            // 5. 監聽結束
-            u.onend = function() {
-                audioStatus.innerText = "播放結束 (可點擊再次發音)";
-                audioStatus.style.color = "#666";
-            };
-            u.onerror = function(e) {
-                log("❌ 發音錯誤: " + e.error);
-                audioStatus.innerText = "❌ 發音失敗，請檢查手機設定";
-            };
-        }
-
-        function openDict() {
-            if(currentSelection) window.open(`https://www.moedict.tw/${currentSelection}`, '_blank');
-        }
-
-        function compressImg(img, maxW) {
-            const ctx = canvas.getContext('2d');
-            let w = img.width; let h = img.height;
-            if(w > maxW) { h *= maxW/w; w = maxW; }
-            canvas.width = w; canvas.height = h;
-            ctx.drawImage(img, 0, 0, w, h);
-            return canvas.toDataURL('image/jpeg', 0.7);
-        }
-    </script>
-</body>
-</html>
+        function runCloud(base64,
