@@ -3,17 +3,15 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>生字掃描機 V12 (最終完善版)</title>
-    <script src='https://unpkg.com/tesseract.js@v2.1.0/dist/tesseract.min.js'></script>
+    <title>生字掃描機 V13 (救援版)</title>
     <style>
-        body { font-family: -apple-system, "Microsoft JhengHei", sans-serif; text-align: center; background-color: #f8f9fa; padding: 15px; margin: 0; -webkit-tap-highlight-color: transparent; }
+        body { font-family: -apple-system, "Microsoft JhengHei", sans-serif; text-align: center; background-color: #f8f9fa; padding: 15px; margin: 0; }
         
-        /* 日誌區 (除錯用，沒問題可忽略) */
-        #log-area {
-            background: #333; color: #0f0; font-family: monospace;
-            padding: 5px; border-radius: 5px; margin-bottom: 10px;
-            text-align: left; font-size: 10px; height: 40px;
-            overflow-y: auto; display: none; /* 預設隱藏，有錯再開 */
+        /* 除錯控制台 (如果當機，這裡會顯示紅字) */
+        #debug-console {
+            background: #333; color: #ff5555; font-family: monospace;
+            padding: 10px; margin-bottom: 15px; text-align: left; font-size: 12px;
+            border-radius: 5px; display: none; /* 沒事隱藏，有事顯示 */
         }
 
         /* API Key 設定 */
@@ -51,14 +49,27 @@
             background: #fff; border: 2px solid #28a745; border-radius: 12px;
             font-size: 34px; color: #333; cursor: pointer; font-weight: bold;
             box-shadow: 0 3px 5px rgba(0,0,0,0.1); position: relative;
-            transition: transform 0.1s;
         }
-        .c-btn:active { transform: scale(0.9); background: #e8f5e9; }
-        
-        /* 來源標籤 */
         .badge {
-            position: absolute; top: -8px; right: -8px;
-            font-size: 10px; color: white; padding: 2px 6px; border-radius: 10px;
+            position: absolute; top: -8px; right: -8px; font-size: 10px; color: white; padding: 2px 6px; border-radius: 10px;
         }
-        .bg-cloud { background: #007bff; border: 1px solid white; }
-        .bg-local { background: #6c757d; border: 1px solid white
+        .bg-cloud { background: #007bff; }
+        .bg-local { background: #6c757d; }
+
+        /* 結果區 */
+        #final-result { display: none; margin-top: 20px; background: #e8f5e9; padding: 25px; border-radius: 20px; border: 2px solid #c8e6c9; }
+        .big-char { font-size: 100px; color: #d32f2f; font-weight: bold; font-family: serif; margin-bottom: 10px; }
+        
+        .action-btn { 
+            font-size: 18px; padding: 12px 25px; margin: 8px; border: none; border-radius: 50px; color: white; cursor: pointer; width: 40%; min-width: 120px;
+        }
+        .btn-back {
+            background: transparent; border: 2px solid #999; color: #777; padding: 8px 20px; margin-top: 20px; border-radius: 20px; cursor: pointer; font-size: 14px;
+        }
+    </style>
+
+    <script>
+        window.onerror = function(message, source, lineno, colno, error) {
+            const consoleDiv = document.getElementById('debug-console');
+            consoleDiv.style.display = 'block';
+            consoleDiv.innerHTML += `❌ 錯誤: ${message}
