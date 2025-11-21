@@ -2,71 +2,203 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>生字掃描機 V3</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>生字掃描機 v4.0</title>
     <script src='https://unpkg.com/tesseract.js@v2.1.0/dist/tesseract.min.js'></script>
     <style>
-        body { font-family: "微軟正黑體", sans-serif; text-align: center; background-color: #f4f4f9; padding: 10px; margin: 0;}
+        body { font-family: "微軟正黑體", sans-serif; text-align: center; background-color: #f0f2f5; padding: 10px; margin: 0;}
         
-        /* 提示區塊 */
-        #line-warning { display: none; background: #ffeba7; color: #856404; padding: 10px; margin-bottom: 10px; border-radius: 5px; font-size: 14px; }
+        /* 標題 */
+        h3 { color: #333; margin: 15px 0; }
 
-        /* 鏡頭外框：預設黃色 */
+        /* 提示與錯誤訊息區 */
+        #status-msg { 
+            padding: 10px; border-radius: 8px; margin-bottom: 10px; font-size: 14px; display: none;
+        }
+        .msg-error { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+        .msg-info { background: #d1ecf1; color: #0c5460; border: 1px solid #bee5eb; }
+
+        /* 鏡頭區域 */
+        .camera-box {
+            position: relative;
+            width: 95%; max-width: 400px; height: 300px;
+            margin: 0 auto;
+            background-color: #000;
+            border-radius: 12px;
+            display: flex; align-items: center; justify-content: center;
+            overflow: hidden;
+            border: 4px solid #ddd;
+        }
+
         video { 
-            width: 90%; max-width: 400px; 
-            border: 6px solid #FFD700; /* 黃色框 */
-            border-radius: 12px; 
-            transition: border 0.3s;
+            width: 100%; height: 100%; object-fit: cover; 
         }
-        
-        /* 掃描運作時的特效：變成紅色並閃爍 */
-        .scanning-active {
-            border-color: #ff3b30 !important; /* 紅色 */
-            animation: blink 0.8s infinite alternate;
-        }
-        @keyframes blink { from { opacity: 1; } to { opacity: 0.7; } }
 
-        /* 按鈕區 */
-        button { font-size: 18px; padding: 12px; margin: 8px 5px; border-radius: 30px; border: none; cursor: pointer; width: 80%; max-width: 300px; }
-        .btn-scan { background-color: #007bff; color: white; font-weight: bold; font-size: 20px; box-shadow: 0 4px 0 #0056b3; }
-        .btn-scan:active { transform: translateY(4px); box-shadow: none; }
+        /* 啟動相機的遮罩層 */
+        #start-overlay {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: #333;
+            display: flex; flex-direction: column; justify-content: center; align-items: center;
+            z-index: 10; color: white;
+        }
+
+        /* 掃描特效：紅色邊框 */
+        .scanning-border {
+            border-color: #ff3b30 !important;
+            box-shadow: 0 0 15px rgba(255, 59, 48, 0.6);
+        }
+
+        /* 按鈕樣式 */
+        button { font-size: 18px; padding: 12px; margin: 10px 5px; border-radius: 30px; border: none; cursor: pointer; width: 85%; max-width: 300px; }
         
-        /* 候選字按鈕 */
+        .btn-start { background-color: #28a745; color: white; font-weight: bold; font-size: 20px; }
+        .btn-scan { background-color: #007bff; color: white; font-weight: bold; font-size: 20px; box-shadow: 0 4px 0 #0056b3; }
+        .btn-scan:disabled { background-color: #ccc; box-shadow: none; color: #666; }
+        
+        /* 候選字與結果 */
         .candidate-btn {
             display: inline-block; width: 50px; height: 50px; line-height: 50px; margin: 5px;
-            background: white; color: #333; font-size: 28px; font-weight: bold;
-            border: 2px solid #007bff; border-radius: 10px; cursor: pointer;
-            width: auto; padding: 0 15px;
+            background: white; color: #333; font-size: 24px; font-weight: bold;
+            border: 2px solid #007bff; border-radius: 10px; padding: 0;
         }
-        .candidate-btn:hover { background: #e3f2fd; }
-
-        /* 結果顯示區 */
-        #result-area { display: none; margin-top: 15px; background: white; padding: 15px; border-radius: 15px; border: 1px solid #ddd; }
-        #status { margin-top: 10px; color: #555; font-weight: bold;}
-
-        .action-btn { width: 45%; font-size: 16px; }
+        #result-area { display: none; margin-top: 15px; background: white; padding: 15px; border-radius: 15px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+        
+        .action-group { display: flex; justify-content: center; gap: 10px; }
+        .action-btn { width: 45%; font-size: 16px; margin: 5px 0; color: white; }
     </style>
 </head>
 <body>
 
-    <div id="line-warning">
-        ⚠️ 偵測到您使用 LINE 開啟。<br>若相機無法啟動，請點選右上角選單，選擇「<strong>使用預設瀏覽器開啟</strong>」。
+    <h3>📚 生字掃描機 v4.0</h3>
+    
+    <div id="status-msg"></div>
+
+    <div class="camera-box" id="cameraBox">
+        <video id="video" playsinline></video>
+        
+        <div id="start-overlay">
+            <p>準備好了嗎？</p>
+            <button class="btn-start" onclick="startCamera()">🟢 啟動相機</button>
+        </div>
+    </div>
+    <canvas id="canvas" style="display:none;"></canvas>
+
+    <div style="margin-top: 15px;">
+        <button id="btnScan" class="btn-scan" onclick="snapAndRecognize()" disabled>📸 拍照辨識</button>
     </div>
 
-    <h3>📷 生字掃描機</h3>
-    
-    <video id="video" autoplay playsinline></video>
-    <canvas id="canvas" style="display:none;"></canvas>
-    
-    <p id="status">相機啟動中...</p>
-    
-    <button id="btnScan" class="btn-scan" onclick="snapAndRecognize()">📸 拍照辨識</button>
-
     <div id="candidates-area" style="display:none; margin-top:10px;">
-        <p style="color:#007bff;">👇 請點選正確的字：</p>
+        <p style="color:#007bff; margin:5px;">👇 請點選正確的字：</p>
         <div id="candidate-list"></div>
-        <button onclick="location.reload()" style="background:#eee; color:#555; font-size:14px; width:auto; margin-top:10px;">都不是，重拍</button>
+        <button onclick="resetScanner()" style="background:#eee; color:#555; font-size:14px; width:auto; padding: 8px 20px; margin-top:10px;">🔄 重拍</button>
     </div>
 
     <div id="result-area">
-        <div style="font-
+        <div style="font-size:14px; color:#888;">您選擇了：</div>
+        <div id="selected-char" style="font-size:80px; color:#d32f2f; font-weight:bold; line-height: 1.2;">?</div>
+        
+        <div class="action-group">
+            <button class="action-btn" style="background:#28a745;" onclick="speakText()">🔊 聽發音</button>
+            <button class="action-btn" style="background:#ff9800;" onclick="openDict()">📖 查字典</button>
+        </div>
+    </div>
+
+    <script>
+        const video = document.getElementById('video');
+        const canvas = document.getElementById('canvas');
+        const startOverlay = document.getElementById('start-overlay');
+        const btnScan = document.getElementById('btnScan');
+        const cameraBox = document.getElementById('cameraBox');
+        const statusMsg = document.getElementById('status-msg');
+        const candidatesArea = document.getElementById('candidates-area');
+        const candidateList = document.getElementById('candidate-list');
+        const resultArea = document.getElementById('result-area');
+        
+        let streamObj = null;
+        let finalChar = "";
+
+        // 顯示訊息輔助函式
+        function showMsg(text, type) {
+            statusMsg.innerText = text;
+            statusMsg.className = type === 'error' ? 'msg-error' : 'msg-info';
+            statusMsg.style.display = 'block';
+        }
+
+        // 1. 手動啟動相機 (這是最關鍵的修改)
+        async function startCamera() {
+            showMsg("正在請求相機權限...", "info");
+            
+            // 嘗試不同的相機設定，先試後鏡頭，失敗則試任何鏡頭
+            const constraints = { 
+                video: { 
+                    facingMode: "environment",
+                    width: { ideal: 1280 },
+                    height: { ideal: 720 }
+                } 
+            };
+
+            try {
+                streamObj = await navigator.mediaDevices.getUserMedia(constraints);
+                handleSuccess(streamObj);
+            } catch (err) {
+                console.error("第一次嘗試失敗", err);
+                // 如果後鏡頭失敗，嘗試放寬條件（有些舊平板不支援 environment 參數）
+                try {
+                    streamObj = await navigator.mediaDevices.getUserMedia({ video: true });
+                    handleSuccess(streamObj);
+                } catch (err2) {
+                    handleError(err2);
+                }
+            }
+        }
+
+        function handleSuccess(stream) {
+            video.srcObject = stream;
+            video.play(); // 確保播放
+            startOverlay.style.display = 'none'; // 隱藏啟動按鈕
+            btnScan.disabled = false; // 啟用拍照按鈕
+            showMsg("相機已啟動！請將生字充滿畫面。", "info");
+        }
+
+        function handleError(error) {
+            console.error(error);
+            let errorText = "❌ 相機啟動失敗：";
+            if (error.name === 'NotAllowedError') {
+                errorText += "您拒絕了相機權限，請重整網頁並允許。";
+            } else if (error.name === 'NotFoundError') {
+                errorText += "找不到相機裝置。";
+            } else {
+                errorText += error.message;
+            }
+            // LINE 瀏覽器特別提示
+            if (navigator.userAgent.indexOf("Line") > -1) {
+                errorText += "\n⚠️ 請點選右上角，使用 Chrome/Safari 開啟。";
+            }
+            showMsg(errorText, "error");
+        }
+
+        // 2. 拍照與辨識
+        function snapAndRecognize() {
+            if (!streamObj) return;
+
+            // 視覺特效
+            cameraBox.classList.add('scanning-border');
+            btnScan.innerText = "⏳ 辨識中...";
+            btnScan.disabled = true;
+            showMsg("正在努力看字...請稍候", "info");
+            
+            // 隱藏舊結果
+            candidatesArea.style.display = 'none';
+            resultArea.style.display = 'none';
+
+            // 截圖
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            canvas.getContext('2d').drawImage(video, 0, 0);
+
+            // Tesseract 辨識
+            Tesseract.recognize(
+                canvas,
+                'chi_tra',
+                { logger: m => console.log(m) }
+            ).then(({ data: {
