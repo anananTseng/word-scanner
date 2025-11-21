@@ -2,205 +2,204 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>生字掃描機 V6 (通用版)</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>生字掃描機 V7 (影像增強版)</title>
     <script src='https://unpkg.com/tesseract.js@v2.1.0/dist/tesseract.min.js'></script>
     <style>
-        body { font-family: -apple-system, BlinkMacSystemFont, "Microsoft JhengHei", sans-serif; text-align: center; background-color: #f8f9fa; padding: 10px; margin: 0; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Microsoft JhengHei", sans-serif; text-align: center; background-color: #f0f4f8; padding: 15px; margin: 0; }
         
-        /* 狀態條 */
-        #system-status { background: #e2e3e5; color: #383d41; padding: 5px; font-size: 12px; margin-bottom: 10px; border-radius: 4px; }
+        h2 { color: #2c3e50; margin-bottom: 10px; }
+        
+        /* 說明文字區 */
+        .guide-text { 
+            background: #fff; padding: 10px; border-radius: 10px; 
+            font-size: 14px; color: #555; margin-bottom: 15px; text-align: left;
+            border-left: 5px solid #007bff; box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+        }
 
-        /* 1. 最巨大的改變：用 Label 當作按鈕 */
+        /* 上傳按鈕美化 */
         .upload-btn-wrapper {
-            position: relative;
-            overflow: hidden;
-            display: inline-block;
-            width: 100%;
-            max-width: 350px;
-            margin-top: 10px;
+            position: relative; overflow: hidden; display: inline-block; width: 100%; max-width: 400px;
         }
-
-        /* 把原本醜醜的 input 變透明，蓋在按鈕上面 */
         .upload-btn-wrapper input[type=file] {
-            font-size: 100px;
-            position: absolute;
-            left: 0;
-            top: 0;
-            opacity: 0; /* 透明 */
-            cursor: pointer;
-            width: 100%;
-            height: 100%;
+            font-size: 100px; position: absolute; left: 0; top: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%;
         }
-
-        /* 按鈕外觀 */
         .btn-style {
-            border: 3px dashed #007bff;
-            color: #007bff;
-            background-color: white;
-            padding: 30px 20px;
-            border-radius: 15px;
-            font-size: 22px;
-            font-weight: bold;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            transition: 0.3s;
+            border: 3px dashed #007bff; background-color: #eeffff; color: #0056b3;
+            padding: 40px 20px; border-radius: 20px;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            transition: 0.2s;
         }
+        .btn-style:active { background-color: #b3e5fc; transform: scale(0.98); }
+        .icon-camera { font-size: 40px; margin-bottom: 10px; }
+        .btn-title { font-size: 22px; font-weight: bold; }
+        .btn-desc { font-size: 14px; color: #666; margin-top: 5px; }
 
-        /* 按下去的反應 */
-        .upload-btn-wrapper:active .btn-style {
-            background-color: #e3f2fd;
-            border-style: solid;
-        }
+        /* 預覽與處理區 */
+        #process-area { display: none; margin-top: 20px; background: white; padding: 10px; border-radius: 10px; }
+        /* 我們把原本的圖片縮小顯示，把處理過的黑白圖片顯示出來讓使用者知道系統有在工作 */
+        canvas { max-width: 100%; border: 2px solid #333; border-radius: 5px; margin-top: 10px; }
+        
+        /* 狀態文字 */
+        #status-text { font-weight: bold; color: #d35400; margin: 10px 0; }
 
-        /* 圖片預覽 */
-        #preview-box {
-            margin-top: 20px;
-            display: none;
-            border: 2px solid #28a745;
-            padding: 5px;
-            border-radius: 10px;
-            background: white;
-        }
-        #preview-img { width: 100%; max-width: 300px; border-radius: 5px; }
-
-        /* 候選字 */
-        #candidates-area { display: none; margin-top: 15px; padding: 10px; background: #fff; border-radius: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+        /* 候選字區 */
+        #candidates-area { display: none; margin-top: 15px; padding: 15px; background: #fff; border-radius: 15px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
         .c-btn {
-            display: inline-block; width: 50px; height: 50px; line-height: 50px; margin: 5px;
-            background: #f0f0f0; border: 2px solid #007bff; border-radius: 8px;
-            font-size: 24px; color: #333; cursor: pointer;
+            display: inline-block; width: 55px; height: 55px; line-height: 55px; margin: 5px;
+            background: #fff; border: 2px solid #007bff; border-radius: 12px;
+            font-size: 28px; color: #333; cursor: pointer; font-weight: bold;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
         }
+        .c-btn:active { background: #007bff; color: white; }
 
         /* 結果區 */
-        #result-area { display: none; margin-top: 15px; padding: 20px; background: #fff3cd; border-radius: 15px; border: 2px solid #ffecb5; }
-        .big-text { font-size: 80px; color: #dc3545; margin: 10px 0; font-weight: bold; }
+        #result-area { display: none; margin-top: 20px; padding: 20px; background: #fff3cd; border-radius: 15px; border: 2px solid #ffeeba; }
+        .big-text { font-size: 90px; color: #c0392b; margin: 10px 0; font-weight: bold; font-family: "KaiTi", "BiauKai", serif; } /* 用楷體顯示更像生字 */
         
-        button.action { font-size: 16px; padding: 10px 20px; margin: 5px; border: none; border-radius: 5px; color: white; cursor: pointer; }
-        .btn-speak { background: #28a745; }
-        .btn-dict { background: #17a2b8; }
-        .btn-reset { background: #6c757d; margin-top: 20px; width: 100%; padding: 10px; }
+        .action-btn { 
+            font-size: 18px; padding: 12px 25px; margin: 5px; border: none; border-radius: 50px; color: white; cursor: pointer; width: 40%; 
+            box-shadow: 0 3px 0 rgba(0,0,0,0.1);
+        }
+        .btn-speak { background: #27ae60; }
+        .btn-dict { background: #2980b9; }
+        .btn-reset { background: #95a5a6; width: 90%; margin-top: 15px; }
 
     </style>
 </head>
 <body>
 
-    <h3>📚 生字掃描機 V6</h3>
-    <div id="system-status">系統準備就緒 (Tesseract Waiting)</div>
-
-    <div class="upload-btn-wrapper" id="upload-wrapper">
-        <div class="btn-style" id="btn-text">
-            <span>📸</span>
-            <span>點此拍照 / 選照片</span>
-            <span style="font-size:14px; color:#666; margin-top:5px; font-weight:normal;">(支援所有手機)</span>
-        </div>
-        <input type="file" name="myfile" accept="image/*" onchange="handleFiles(this.files)">
+    <h2>📝 生字掃描機 V7</h2>
+    
+    <div class="guide-text">
+        <strong>💡 使用小撇步：</strong><br>
+        1. 建議先用手機相機拍好照片，確認字體清楚。<br>
+        2. 點擊下方按鈕，從相簿選擇該照片。<br>
+        3. 系統會自動將圖片轉為黑白以提升辨識率。
     </div>
 
-    <div id="preview-box">
-        <div style="color:#28a745; font-weight:bold; margin-bottom:5px;">圖片讀取成功！</div>
-        <img id="preview-img">
-        <div id="progress-text" style="margin-top:10px; color:#d35400; font-weight:bold;">⏳ 準備辨識...</div>
+    <div class="upload-btn-wrapper" id="upload-wrapper">
+        <div class="btn-style">
+            <div class="icon-camera">📸</div>
+            <div class="btn-title">拍照 或 選取照片</div>
+            <div class="btn-desc">系統會自動加強文字清晰度</div>
+        </div>
+        <input type="file" accept="image/*" onchange="handleFiles(this.files)">
+    </div>
+
+    <div id="process-area">
+        <div id="status-text">⏳ 正在讀取圖片...</div>
+        <div style="font-size:12px; color:#999;">影像增強預覽：</div>
+        <canvas id="process-canvas"></canvas>
     </div>
 
     <div id="candidates-area">
-        <p>🤔 請點選正確的字：</p>
+        <p style="color:#007bff; margin:0 0 10px 0;">👇 系統看到這些字，請選正確的：</p>
         <div id="c-list"></div>
     </div>
 
     <div id="result-area">
-        <div>您選擇了：</div>
+        <div style="color:#7f8c8d;">您選擇了：</div>
         <div id="final-char" class="big-text">?</div>
         <div>
-            <button class="action btn-speak" onclick="speak()">🔊 發音</button>
-            <button class="action btn-dict" onclick="dict()">📖 字典</button>
+            <button class="action-btn btn-speak" onclick="speak()">🔊 聽讀音</button>
+            <button class="action-btn btn-dict" onclick="dict()">📖 查解釋</button>
         </div>
-        <button class="action btn-reset" onclick="location.reload()">🔄 掃描下一個字</button>
+        <button class="action-btn btn-reset" onclick="location.reload()">🔄 掃描下一個</button>
     </div>
 
-    <canvas id="canvas" style="display:none;"></canvas>
-
     <script>
-        // 檢查 Tesseract 是否載入
-        window.onload = function() {
-            if(typeof Tesseract === 'undefined') {
-                document.getElementById('system-status').innerText = "⚠️ 錯誤：辨識核心未載入，請檢查網路";
-                document.getElementById('system-status').style.background = "#f8d7da";
-                document.getElementById('system-status').style.color = "#721c24";
-            }
-        };
-
-        const previewBox = document.getElementById('preview-box');
-        const previewImg = document.getElementById('preview-img');
-        const progressText = document.getElementById('progress-text');
-        const candidatesArea = document.getElementById('candidates-area');
+        const uploadWrapper = document.getElementById('upload-wrapper');
+        const processArea = document.getElementById('process-area');
+        const statusText = document.getElementById('status-text');
+        const canvas = document.getElementById('process-canvas');
         const cList = document.getElementById('c-list');
+        const candidatesArea = document.getElementById('candidates-area');
         const resultArea = document.getElementById('result-area');
         const finalCharDiv = document.getElementById('final-char');
-        const canvas = document.getElementById('canvas');
+        
         let selectedChar = "";
 
         function handleFiles(files) {
             if (files.length === 0) return;
 
-            // UI 更新
-            document.getElementById('upload-wrapper').style.display = 'none'; // 隱藏拍照按鈕
-            previewBox.style.display = 'block';
-            progressText.innerText = "⏳ 正在處理圖片...";
-
+            uploadWrapper.style.display = 'none';
+            processArea.style.display = 'block';
+            
             const file = files[0];
             const reader = new FileReader();
 
             reader.onload = function(e) {
                 const img = new Image();
                 img.onload = function() {
-                    previewImg.src = e.target.result;
-                    // 開始辨識流程
-                    recognizeImage(img);
+                    // 進入影像處理流程
+                    processAndRecognize(img);
                 };
                 img.src = e.target.result;
             };
             reader.readAsDataURL(file);
         }
 
-        function recognizeImage(imgElement) {
-            progressText.innerText = "🔍 正在努力辨識文字 (約需 3-5 秒)...";
+        // 核心升級：影像前處理 (Pre-processing)
+        function processAndRecognize(img) {
+            statusText.innerText = "🔧 正在進行影像增強處理...";
             
-            // 縮圖優化 (重要：加速用)
             const ctx = canvas.getContext('2d');
-            const MAX_W = 800;
-            let w = imgElement.width;
-            let h = imgElement.height;
             
-            if (w > MAX_W) {
-                h *= MAX_W / w;
-                w = MAX_W;
-            }
+            // 1. 縮放圖片 (太大的圖片辨識慢，太小不準，設寬度 800 為佳)
+            const MAX_W = 800;
+            let w = img.width;
+            let h = img.height;
+            if (w > MAX_W) { h *= MAX_W / w; w = MAX_W; }
+            
             canvas.width = w;
             canvas.height = h;
-            ctx.drawImage(imgElement, 0, 0, w, h);
+            ctx.drawImage(img, 0, 0, w, h);
 
-            // Tesseract 執行
+            // 2. 取得像素資料
+            let imageData = ctx.getImageData(0, 0, w, h);
+            let data = imageData.data;
+
+            // 3. 二值化演算法 (Binarization) - 把灰色變黑色，背景變全白
+            // 這是提升手寫辨識率的關鍵！
+            for (let i = 0; i < data.length; i += 4) {
+                // 計算灰度 (R+G+B)/3
+                let avg = (data[i] + data[i + 1] + data[i + 2]) / 3;
+                // 閥值設定為 160 (可調整)，低於此值變黑(字)，高於此值變白(紙)
+                let threshold = 160; 
+                let color = avg < threshold ? 0 : 255;
+                
+                data[i] = color;     // R
+                data[i + 1] = color; // G
+                data[i + 2] = color; // B
+            }
+            
+            // 將處理好的黑白圖片放回 Canvas
+            ctx.putImageData(imageData, 0, 0);
+
+            // 4. 開始辨識 (傳送處理過的 Canvas 給 Tesseract)
+            statusText.innerText = "🔍 正在努力辨識文字...";
+            
             Tesseract.recognize(
-                canvas,
+                canvas, // 這裡傳送的是黑白圖片
                 'chi_tra',
                 { logger: m => console.log(m) }
             ).then(({ data: { text } }) => {
-                progressText.style.display = 'none';
+                statusText.style.display = 'none';
                 
-                // 篩選中文字
+                // 過濾與去重
                 let chars = text.match(/[\u4e00-\u9fa5]/g);
+                
                 if(chars && chars.length > 0) {
-                    let unique = [...new Set(chars)];
-                    showCandidates(unique.slice(0, 8));
+                    // 過濾掉太過於奇怪的辨識結果，並取前 10 個
+                    let unique = [...new Set(chars)].slice(0, 10);
+                    showCandidates(unique);
                 } else {
-                    alert("❌ 沒看到中文字耶！請重新拍照，字要大一點喔。");
+                    alert("❌ 嗚嗚，看不懂這個字...\n建議：\n1.字寫大一點\n2.筆畫粗一點\n3.盡量只有一個字在畫面中");
                     location.reload();
                 }
             }).catch(err => {
-                alert("❌ 系統出錯：" + err);
+                alert("系統錯誤：" + err);
                 location.reload();
             });
         }
@@ -208,6 +207,9 @@
         function showCandidates(chars) {
             cList.innerHTML = "";
             candidatesArea.style.display = "block";
+            // 自動捲動
+            candidatesArea.scrollIntoView({ behavior: 'smooth' });
+
             chars.forEach(char => {
                 let btn = document.createElement("div");
                 btn.className = "c-btn";
@@ -220,6 +222,7 @@
         function showResult(char) {
             selectedChar = char;
             candidatesArea.style.display = "none";
+            processArea.style.display = "none"; // 隱藏黑白圖
             resultArea.style.display = "block";
             finalCharDiv.innerText = char;
             speak();
