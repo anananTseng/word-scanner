@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>生字掃描機 V16 (精準平衡版)</title>
+    <title>生字掃描機 V17 (發音修復)</title>
     <style>
         body { font-family: -apple-system, BlinkMacSystemFont, "Microsoft JhengHei", sans-serif; text-align: center; background-color: #f4f4f4; padding: 10px; margin: 0; }
         h2 { color: #333; margin: 10px 0; font-size: 24px; }
@@ -37,12 +37,8 @@
             font-size: 34px; font-weight: bold; color: #333; position: relative;
             box-shadow: 0 2px 5px rgba(0,0,0,0.1);
         }
-        /* 優先權標記 */
-        .badge {
-            position: absolute; top: -5px; right: -5px; font-size: 10px; padding: 2px 5px; border-radius: 4px; color: white;
-        }
-        .badge-hot { background: #dc3545; } /* 兩個引擎都找到 */
-        .badge-normal { background: #6c757d; display: none; } 
+        .badge { position: absolute; top: -5px; right: -5px; font-size: 10px; padding: 2px 5px; border-radius: 4px; color: white; }
+        .badge-hot { background: #dc3545; }
 
         /* 最終結果 */
         #final-card {
@@ -52,15 +48,21 @@
         }
         .big-font { font-size: 120px; color: #d32f2f; font-weight: bold; font-family: serif; margin: 10px 0; }
         .action-btn {
-            padding: 12px 30px; margin: 5px; border-radius: 50px; border: none;
-            color: white; font-size: 18px; width: 160px; box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+            padding: 15px 40px; margin: 10px; border-radius: 50px; border: none;
+            color: white; font-size: 20px; width: 200px; box-shadow: 0 6px 12px rgba(0,0,0,0.2);
+            display: flex; align-items: center; justify-content: center; gap: 10px;
         }
+        .action-btn:active { transform: scale(0.95); }
+        
+        /* 發音狀態顯示 */
+        #audio-status { margin-top: 10px; color: #666; font-size: 14px; height: 20px; }
+        
         .btn-close { margin-top: 30px; background: transparent; color: #888; border: 1px solid #ccc; font-size: 14px; padding: 8px 20px; border-radius: 20px;}
     </style>
 </head>
 <body>
 
-    <h2>⚖️ 生字掃描機 V16</h2>
+    <h2>🔊 生字掃描機 V17</h2>
     <div id="sys-log">系統就緒<br></div>
 
     <div class="main-btn" id="scan-btn">
@@ -72,9 +74,8 @@
 
     <div id="workspace">
         <img id="preview-img">
-        <div style="margin-top:10px; color:#007bff; font-weight:bold;">👇 可能是這些字：</div>
+        <div style="margin-top:10px; color:#007bff; font-weight:bold;">👇 請點選正確的字：</div>
         <div id="char-list"></div>
-        
         <div style="margin-top:10px; font-size:12px; color:#999;" id="result-count"></div>
         <button onclick="location.reload()" style="margin-top:20px; padding:10px 30px; border-radius:20px; border:none; background:#eee;">🔄 重來</button>
     </div>
@@ -82,9 +83,16 @@
     <div id="final-card">
         <div style="color:#888;">您選擇了：</div>
         <div id="selected-char" class="big-font">?</div>
+        
+        <div id="audio-status">準備發音...</div>
+        
         <div>
-            <button class="action-btn" style="background:#28a745;" onclick="playAudio()">🔊 聽發音</button>
-            <button class="action-btn" style="background:#17a2b8;" onclick="openDict()">📖 查解釋</button>
+            <button class="action-btn" style="background:#28a745;" onclick="forcePlayAudio()">
+                <span>🔊</span> 聽發音
+            </button>
+            <button class="action-btn" style="background:#17a2b8;" onclick="openDict()">
+                <span>📖</span> 查解釋
+            </button>
         </div>
         <button class="btn-close" onclick="closeCard()">↩️ 返回重選</button>
     </div>
@@ -107,10 +115,18 @@
         const selectedCharDiv = document.getElementById('selected-char');
         const canvas = document.getElementById('canvas');
         const countDiv = document.getElementById('result-count');
+        const audioStatus = document.getElementById('audio-status');
         
-        // 使用 Map 來計數 (字元 -> 出現次數)
         let charMap = new Map(); 
         let currentSelection = "";
+        let voices = [];
+
+        // --- 初始化語音 ---
+        // 這是關鍵：某些瀏覽器需要時間載入語音包
+        window.speechSynthesis.onvoiceschanged = function() {
+            voices = window.speechSynthesis.getVoices();
+            log(`語音包載入: ${voices.length} 個`);
+        };
 
         function log(msg) {
             console.log(msg);
@@ -122,11 +138,10 @@
             if(files.length === 0) return;
             if(!MY_KEY || MY_KEY.includes("請貼上")) { alert("請先設定 API Key"); return; }
 
-            // UI 切換
             document.getElementById('scan-btn').style.display = 'none';
             workspace.style.display = 'block';
-            charList.innerHTML = "<div style='color:#888;'>⏳ 正在運算中...</div>";
-            charMap.clear(); // 清空紀錄
+            charList.innerHTML = "<div style='color:#888;'>⏳ 運算中...</div>";
+            charMap.clear();
 
             const file = files[0];
             const reader = new FileReader();
@@ -142,30 +157,25 @@
         }
 
         function startEngines(img) {
-            // 1. 啟動本機 (給原圖！不壓縮！這是修復簡單字看不到的關鍵)
             if(typeof Tesseract !== 'undefined') {
-                log("啟動本機引擎 (高畫質)...");
+                log("啟動本機 (高畫質)...");
                 runLocal(img); 
             }
-
-            // 2. 啟動雲端 (給壓縮圖)
             const base64 = compressImg(img, 1000);
-            log("啟動雲端手寫引擎...");
-            runCloud(base64, '2'); // 只要開 Engine 2 (手寫) 就夠了，開太多會雜訊爆炸
+            log("啟動雲端...");
+            runCloud(base64, '2'); 
         }
 
         function runLocal(img) {
             const ctx = canvas.getContext('2d');
-            // 使用原尺寸，確保 Tesseract 看得清楚
             canvas.width = img.width; canvas.height = img.height;
             ctx.drawImage(img, 0, 0);
-
             Tesseract.recognize(canvas, 'chi_tra')
                 .then(({ data: { text } }) => {
-                    log("本機運算完成");
-                    addResults(text, 'local');
+                    log("本機完成");
+                    addResults(text);
                 })
-                .catch(err => log("❌ 本機錯誤: " + err.message));
+                .catch(err => log("❌ 本機錯誤"));
         }
 
         function runCloud(base64, engineId) {
@@ -182,44 +192,26 @@
             .then(res => res.json())
             .then(data => {
                 if(!data.IsErroredOnProcessing && data.ParsedResults.length > 0) {
-                    log("雲端運算完成");
-                    addResults(data.ParsedResults[0].ParsedText, 'cloud');
-                } else {
-                    log("雲端無結果或錯誤");
+                    log("雲端完成");
+                    addResults(data.ParsedResults[0].ParsedText);
                 }
             })
             .catch(err => log("雲端連線失敗"));
         }
 
-        // --- 核心：結果整合與過濾 ---
-        function addResults(text, source) {
-            // 如果還在 loading，清空它
+        function addResults(text) {
             if(charList.innerHTML.includes('運算')) charList.innerHTML = "";
-
-            // 1. 只抓中文字
             const matches = text.match(/[\u4e00-\u9fa5]/g);
             if(!matches) return;
-
-            // 2. 統計出現次數
             matches.forEach(char => {
-                if(charMap.has(char)) {
-                    charMap.set(char, charMap.get(char) + 1); // 加分
-                } else {
-                    charMap.set(char, 1); // 新字
-                }
+                charMap.set(char, (charMap.get(char) || 0) + 1);
             });
-
             renderButtons();
         }
 
         function renderButtons() {
             charList.innerHTML = "";
-            
-            // 3. 排序：出現次數多的排前面 (權重高)
-            // 轉成 Array 進行排序
             let sortedChars = Array.from(charMap.entries()).sort((a, b) => b[1] - a[1]);
-
-            // 4. 截斷：只取前 12 個字 (避免 150 個字的災難)
             let finalChars = sortedChars.slice(0, 12);
 
             finalChars.forEach(([char, score]) => {
@@ -227,41 +219,76 @@
                 btn.className = 'char-btn';
                 btn.innerText = char;
                 btn.onclick = () => showFinal(char);
-
-                // 如果分數 > 1 (代表本機和雲端都看到了)，加上「推薦」標記
                 if(score > 1) {
                     const badge = document.createElement('span');
                     badge.className = 'badge badge-hot';
                     badge.innerText = '準';
                     btn.appendChild(badge);
-                    btn.style.borderColor = '#dc3545'; // 紅框強調
+                    btn.style.borderColor = '#dc3545';
                 }
-
                 charList.appendChild(btn);
             });
-
-            countDiv.innerText = `(已過濾雜訊，顯示前 ${finalChars.length} 個最可能的字)`;
+            countDiv.innerText = `(顯示前 ${finalChars.length} 個)`;
         }
 
-        // --- 互動 ---
+        // --- 互動區 ---
         function showFinal(char) {
             currentSelection = char;
             selectedCharDiv.innerText = char;
             finalCard.style.display = 'flex';
-            setTimeout(playAudio, 300);
+            
+            // 延遲自動播放，並顯示狀態
+            audioStatus.innerText = "準備發音...";
+            setTimeout(forcePlayAudio, 500);
         }
 
         function closeCard() { finalCard.style.display = 'none'; }
 
-        function playAudio() {
+        // --- 核心發音修復 ---
+        function forcePlayAudio() {
             if(!currentSelection) return;
+            
+            // 1. 停止正在說的話
             window.speechSynthesis.cancel();
+
+            // 2. 建立發音物件
             const u = new SpeechSynthesisUtterance(currentSelection);
-            u.lang = 'zh-TW';
-            const voices = window.speechSynthesis.getVoices();
-            const zh = voices.find(v => v.lang.includes('zh') || v.lang.includes('TW'));
-            if(zh) u.voice = zh;
+            u.lang = 'zh-TW'; // 預設台灣
+            u.rate = 0.8;     // 速度
+            u.volume = 1;     // 音量最大
+
+            // 3. 尋找最佳語音包 (這是修復重點)
+            if (voices.length === 0) voices = window.speechSynthesis.getVoices();
+            
+            // 優先順序: zh-TW > zh-HK > zh-CN > 任何 zh
+            let targetVoice = voices.find(v => v.lang.includes('zh-TW') || v.lang.includes('zh_TW'));
+            if (!targetVoice) targetVoice = voices.find(v => v.lang.includes('zh-HK'));
+            if (!targetVoice) targetVoice = voices.find(v => v.lang.includes('zh-CN'));
+            if (!targetVoice) targetVoice = voices.find(v => v.lang.includes('zh'));
+
+            if (targetVoice) {
+                u.voice = targetVoice;
+                log(`使用語音: ${targetVoice.name}`);
+                audioStatus.innerText = `🔊 播放中 (${targetVoice.name})`;
+                audioStatus.style.color = "#28a745";
+            } else {
+                log("⚠️ 找不到中文語音包，嘗試使用系統預設");
+                audioStatus.innerText = "⚠️ 使用系統預設發音";
+                audioStatus.style.color = "#d35400";
+            }
+
+            // 4. 播放
             window.speechSynthesis.speak(u);
+
+            // 5. 監聽結束
+            u.onend = function() {
+                audioStatus.innerText = "播放結束 (可點擊再次發音)";
+                audioStatus.style.color = "#666";
+            };
+            u.onerror = function(e) {
+                log("❌ 發音錯誤: " + e.error);
+                audioStatus.innerText = "❌ 發音失敗，請檢查手機設定";
+            };
         }
 
         function openDict() {
