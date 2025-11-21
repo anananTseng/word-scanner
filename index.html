@@ -3,53 +3,48 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>生字掃描機 V15 (免設定版)</title>
+    <title>生字掃描機 V16 (精準平衡版)</title>
     <style>
-        /* 基礎樣式 */
         body { font-family: -apple-system, BlinkMacSystemFont, "Microsoft JhengHei", sans-serif; text-align: center; background-color: #f4f4f4; padding: 10px; margin: 0; }
         h2 { color: #333; margin: 10px 0; font-size: 24px; }
 
-        /* 系統日誌 (除錯用) */
+        /* 日誌區 */
         #sys-log {
             background: #222; color: #0f0; font-family: monospace;
             padding: 8px; margin-bottom: 15px; text-align: left; font-size: 11px;
-            border-radius: 5px; height: 60px; overflow-y: auto;
-            border: 1px solid #555;
+            border-radius: 5px; height: 60px; overflow-y: auto; border: 1px solid #555;
         }
 
-        /* 大按鈕區域 */
+        /* 大按鈕 */
         .main-btn {
             display: block; width: 100%; max-width: 400px; margin: 0 auto;
             position: relative; background: white; overflow: hidden;
             border: 3px dashed #007bff; border-radius: 20px; padding: 30px 10px;
             cursor: pointer; box-shadow: 0 4px 8px rgba(0,0,0,0.1);
         }
-        .main-btn:active { background-color: #f0f8ff; transform: scale(0.98); }
-        
-        /* 覆蓋在按鈕上的透明 input */
-        .hidden-input {
-            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-            opacity: 0; cursor: pointer; font-size: 100px;
-        }
+        .main-btn:active { background-color: #eef; }
+        .hidden-input { position: absolute; top: 0; left: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; font-size: 100px; }
 
-        /* 預覽與結果區 */
+        /* 預覽與結果 */
         #workspace { display: none; margin-top: 15px; }
         #preview-img { max-width: 150px; border-radius: 8px; border: 2px solid #fff; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
 
-        /* 候選字按鈕 */
-        #char-list { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; margin-top: 15px; }
+        /* 候選字列表 */
+        #char-list { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; margin-top: 15px; }
         .char-btn {
-            width: 60px; height: 60px; display: flex; align-items: center; justify-content: center;
+            width: 65px; height: 65px; display: flex; align-items: center; justify-content: center;
             background: white; border: 2px solid #28a745; border-radius: 12px;
-            font-size: 32px; font-weight: bold; color: #333; position: relative;
+            font-size: 34px; font-weight: bold; color: #333; position: relative;
             box-shadow: 0 2px 5px rgba(0,0,0,0.1);
         }
-        /* 來源標記 */
-        .tag { position: absolute; top: -5px; right: -5px; font-size: 10px; padding: 2px 5px; border-radius: 8px; color: white; }
-        .tag-cloud { background: #007bff; }
-        .tag-local { background: #6c757d; }
+        /* 優先權標記 */
+        .badge {
+            position: absolute; top: -5px; right: -5px; font-size: 10px; padding: 2px 5px; border-radius: 4px; color: white;
+        }
+        .badge-hot { background: #dc3545; } /* 兩個引擎都找到 */
+        .badge-normal { background: #6c757d; display: none; } 
 
-        /* 最終結果卡片 */
+        /* 最終結果 */
         #final-card {
             display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
             background: rgba(255,255,255,0.98); z-index: 999;
@@ -65,21 +60,22 @@
 </head>
 <body>
 
-    <h2>🚀 生字掃描機 V15</h2>
-
-    <div id="sys-log">系統就緒，等待拍照...<br></div>
+    <h2>⚖️ 生字掃描機 V16</h2>
+    <div id="sys-log">系統就緒<br></div>
 
     <div class="main-btn" id="scan-btn">
         <div style="font-size: 40px;">📸</div>
         <div style="font-size: 20px; font-weight: bold;">拍照 / 選照片</div>
-        <div style="font-size: 14px; color: #666;">(直接點擊即可)</div>
+        <div style="font-size: 14px; color: #666;">(點擊開始)</div>
         <input type="file" class="hidden-input" accept="image/*" onchange="handleFile(this.files)">
     </div>
 
     <div id="workspace">
         <img id="preview-img">
-        <div style="margin-top:10px; color:#007bff; font-weight:bold;">👇 辨識結果：</div>
+        <div style="margin-top:10px; color:#007bff; font-weight:bold;">👇 可能是這些字：</div>
         <div id="char-list"></div>
+        
+        <div style="margin-top:10px; font-size:12px; color:#999;" id="result-count"></div>
         <button onclick="location.reload()" style="margin-top:20px; padding:10px 30px; border-radius:20px; border:none; background:#eee;">🔄 重來</button>
     </div>
 
@@ -95,16 +91,14 @@
 
     <canvas id="canvas" style="display:none;"></canvas>
 
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/2.1.5/tesseract.min.js" onerror="log('⚠️ Tesseract 載入失敗，將僅使用雲端功能')"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/2.1.5/tesseract.min.js"></script>
 
     <script>
-        // ==================================================
-        // ★★★ 請在這裡填入您的 API KEY (保留引號) ★★★
-        // 例如: const MY_KEY = "K81234567889";
-        const MY_KEY = "請把您的Key貼在這裡"; 
-        // ==================================================
+        // ==========================================
+        // ★★★ 請貼上您的 API KEY ★★★
+        const MY_KEY = "K83254970588957"; 
+        // ==========================================
 
-        // --- 全域變數 ---
         const logBox = document.getElementById('sys-log');
         const workspace = document.getElementById('workspace');
         const charList = document.getElementById('char-list');
@@ -112,8 +106,10 @@
         const finalCard = document.getElementById('final-card');
         const selectedCharDiv = document.getElementById('selected-char');
         const canvas = document.getElementById('canvas');
+        const countDiv = document.getElementById('result-count');
         
-        let foundChars = new Set();
+        // 使用 Map 來計數 (字元 -> 出現次數)
+        let charMap = new Map(); 
         let currentSelection = "";
 
         function log(msg) {
@@ -122,26 +118,17 @@
             logBox.scrollTop = logBox.scrollHeight;
         }
 
-        // --- 1. 檔案處理 ---
         function handleFile(files) {
             if(files.length === 0) return;
-
-            // 檢查使用者有沒有填 Key
-            if(MY_KEY === "K83254970588957" || MY_KEY === "") {
-                alert("⚠️ 程式碼裡的 Key 還沒設定喔！請回到 GitHub 修改 index.html");
-                log("錯誤: API KEY 未設定");
-                return;
-            }
+            if(!MY_KEY || MY_KEY.includes("請貼上")) { alert("請先設定 API Key"); return; }
 
             // UI 切換
             document.getElementById('scan-btn').style.display = 'none';
             workspace.style.display = 'block';
-            charList.innerHTML = "<div style='color:#888;'>⏳ 運算啟動中...</div>";
-            foundChars.clear();
+            charList.innerHTML = "<div style='color:#888;'>⏳ 正在運算中...</div>";
+            charMap.clear(); // 清空紀錄
 
             const file = files[0];
-            log("讀取圖片...");
-            
             const reader = new FileReader();
             reader.onload = function(e) {
                 const img = new Image();
@@ -154,100 +141,109 @@
             reader.readAsDataURL(file);
         }
 
-        // --- 2. 多引擎啟動 ---
         function startEngines(img) {
-            const base64 = compressImg(img, 1000);
-
-            // A. 本機
+            // 1. 啟動本機 (給原圖！不壓縮！這是修復簡單字看不到的關鍵)
             if(typeof Tesseract !== 'undefined') {
-                log("啟動本機引擎...");
-                runLocal(img);
-            } else {
-                log("跳過本機引擎 (未載入)");
+                log("啟動本機引擎 (高畫質)...");
+                runLocal(img); 
             }
 
-            // B. 雲端 (帶入 MY_KEY)
+            // 2. 啟動雲端 (給壓縮圖)
+            const base64 = compressImg(img, 1000);
             log("啟動雲端手寫引擎...");
-            runCloud(base64, '2', 'cloud-hand');
-
-            setTimeout(() => {
-                log("啟動雲端印刷引擎...");
-                runCloud(base64, '1', 'cloud-print');
-            }, 1200);
+            runCloud(base64, '2'); // 只要開 Engine 2 (手寫) 就夠了，開太多會雜訊爆炸
         }
 
-        // --- 3. 本機辨識 ---
         function runLocal(img) {
             const ctx = canvas.getContext('2d');
+            // 使用原尺寸，確保 Tesseract 看得清楚
             canvas.width = img.width; canvas.height = img.height;
             ctx.drawImage(img, 0, 0);
 
             Tesseract.recognize(canvas, 'chi_tra')
                 .then(({ data: { text } }) => {
-                    log("本機辨識完成");
-                    parseText(text, 'local');
+                    log("本機運算完成");
+                    addResults(text, 'local');
                 })
                 .catch(err => log("❌ 本機錯誤: " + err.message));
         }
 
-        // --- 4. 雲端辨識 ---
-        function runCloud(base64, engineId, sourceTag) {
+        function runCloud(base64, engineId) {
             const formData = new FormData();
             formData.append("base64Image", base64);
             formData.append("language", "cht");
             formData.append("OCREngine", engineId);
             formData.append("isOverlayRequired", "false");
-            formData.append("apikey", MY_KEY); // 使用程式碼中的 Key
+            formData.append("apikey", MY_KEY);
 
             fetch("https://api.ocr.space/parse/image", {
                 method: "POST", body: formData
             })
             .then(res => res.json())
             .then(data => {
-                if(data.IsErroredOnProcessing) {
-                    log(`❌ 雲端(${engineId})錯誤: ${data.ErrorMessage}`);
-                } else if (data.ParsedResults && data.ParsedResults.length > 0) {
-                    log(`✅ 雲端(${engineId}) 回傳成功`);
-                    parseText(data.ParsedResults[0].ParsedText, 'cloud');
+                if(!data.IsErroredOnProcessing && data.ParsedResults.length > 0) {
+                    log("雲端運算完成");
+                    addResults(data.ParsedResults[0].ParsedText, 'cloud');
+                } else {
+                    log("雲端無結果或錯誤");
                 }
             })
-            .catch(err => log(`❌ 雲端連線失敗: ${err}`));
+            .catch(err => log("雲端連線失敗"));
         }
 
-        // --- 5. 解析與顯示 ---
-        function parseText(text, type) {
+        // --- 核心：結果整合與過濾 ---
+        function addResults(text, source) {
+            // 如果還在 loading，清空它
             if(charList.innerHTML.includes('運算')) charList.innerHTML = "";
 
+            // 1. 只抓中文字
             const matches = text.match(/[\u4e00-\u9fa5]/g);
             if(!matches) return;
 
-            let newCount = 0;
+            // 2. 統計出現次數
             matches.forEach(char => {
-                if(!foundChars.has(char)) {
-                    foundChars.add(char);
-                    newCount++;
-                    createBtn(char, type);
+                if(charMap.has(char)) {
+                    charMap.set(char, charMap.get(char) + 1); // 加分
+                } else {
+                    charMap.set(char, 1); // 新字
                 }
             });
-            
-            if(newCount > 0) log(`+ 新增 ${newCount} 字 (${type})`);
+
+            renderButtons();
         }
 
-        function createBtn(char, type) {
-            const btn = document.createElement('div');
-            btn.className = 'char-btn';
-            btn.innerText = char;
+        function renderButtons() {
+            charList.innerHTML = "";
             
-            const tag = document.createElement('span');
-            tag.className = `tag ${type === 'cloud' ? 'tag-cloud' : 'tag-local'}`;
-            tag.innerText = type === 'cloud' ? '☁️' : '📱';
-            
-            btn.appendChild(tag);
-            btn.onclick = () => showFinal(char);
-            charList.appendChild(btn);
+            // 3. 排序：出現次數多的排前面 (權重高)
+            // 轉成 Array 進行排序
+            let sortedChars = Array.from(charMap.entries()).sort((a, b) => b[1] - a[1]);
+
+            // 4. 截斷：只取前 12 個字 (避免 150 個字的災難)
+            let finalChars = sortedChars.slice(0, 12);
+
+            finalChars.forEach(([char, score]) => {
+                const btn = document.createElement('div');
+                btn.className = 'char-btn';
+                btn.innerText = char;
+                btn.onclick = () => showFinal(char);
+
+                // 如果分數 > 1 (代表本機和雲端都看到了)，加上「推薦」標記
+                if(score > 1) {
+                    const badge = document.createElement('span');
+                    badge.className = 'badge badge-hot';
+                    badge.innerText = '準';
+                    btn.appendChild(badge);
+                    btn.style.borderColor = '#dc3545'; // 紅框強調
+                }
+
+                charList.appendChild(btn);
+            });
+
+            countDiv.innerText = `(已過濾雜訊，顯示前 ${finalChars.length} 個最可能的字)`;
         }
 
-        // --- 6. 互動 ---
+        // --- 互動 ---
         function showFinal(char) {
             currentSelection = char;
             selectedCharDiv.innerText = char;
@@ -255,20 +251,16 @@
             setTimeout(playAudio, 300);
         }
 
-        function closeCard() {
-            finalCard.style.display = 'none';
-        }
+        function closeCard() { finalCard.style.display = 'none'; }
 
         function playAudio() {
             if(!currentSelection) return;
             window.speechSynthesis.cancel();
             const u = new SpeechSynthesisUtterance(currentSelection);
             u.lang = 'zh-TW';
-            
             const voices = window.speechSynthesis.getVoices();
             const zh = voices.find(v => v.lang.includes('zh') || v.lang.includes('TW'));
             if(zh) u.voice = zh;
-            
             window.speechSynthesis.speak(u);
         }
 
