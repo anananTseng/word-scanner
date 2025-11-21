@@ -3,28 +3,19 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>生字掃描機 V14 (堅若磐石版)</title>
+    <title>生字掃描機 V15 (免設定版)</title>
     <style>
-        /* 基礎樣式：保證字體夠大，按鈕好按 */
+        /* 基礎樣式 */
         body { font-family: -apple-system, BlinkMacSystemFont, "Microsoft JhengHei", sans-serif; text-align: center; background-color: #f4f4f4; padding: 10px; margin: 0; }
-        
-        /* 標題 */
         h2 { color: #333; margin: 10px 0; font-size: 24px; }
 
-        /* 除錯視窗 (Debug Log) - 預設顯示，確保我們知道發生什麼事 */
+        /* 系統日誌 (除錯用) */
         #sys-log {
             background: #222; color: #0f0; font-family: monospace;
             padding: 8px; margin-bottom: 15px; text-align: left; font-size: 11px;
             border-radius: 5px; height: 60px; overflow-y: auto;
             border: 1px solid #555;
         }
-
-        /* 輸入框樣式 */
-        .input-group {
-            background: #fff; padding: 15px; border-radius: 10px; margin-bottom: 15px;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.05); text-align: left;
-        }
-        input[type="text"] { width: 100%; padding: 12px; margin-top: 5px; box-sizing: border-box; border: 1px solid #ccc; border-radius: 5px; font-size: 16px; }
 
         /* 大按鈕區域 */
         .main-btn {
@@ -70,16 +61,229 @@
             color: white; font-size: 18px; width: 160px; box-shadow: 0 4px 10px rgba(0,0,0,0.2);
         }
         .btn-close { margin-top: 30px; background: transparent; color: #888; border: 1px solid #ccc; font-size: 14px; padding: 8px 20px; border-radius: 20px;}
-
     </style>
 </head>
 <body>
 
-    <h2>🛠️ 生字掃描機 V14</h2>
+    <h2>🚀 生字掃描機 V15</h2>
 
-    <div id="sys-log">系統啟動中...<br></div>
+    <div id="sys-log">系統就緒，等待拍照...<br></div>
 
-    <div class="input-group" id="key-box">
-        <label style="font-weight:bold; color:#d35400;">🔑 請輸入 OCR.space Key</label>
-        <div style="font-size:12px; color:#666; margin-bottom:5px;">因為是完全重寫版，請重新輸入一次</div>
-        <input type="text" id="api-key" placeholder="貼上 Key" onchange="saveKey()">
+    <div class="main-btn" id="scan-btn">
+        <div style="font-size: 40px;">📸</div>
+        <div style="font-size: 20px; font-weight: bold;">拍照 / 選照片</div>
+        <div style="font-size: 14px; color: #666;">(直接點擊即可)</div>
+        <input type="file" class="hidden-input" accept="image/*" onchange="handleFile(this.files)">
+    </div>
+
+    <div id="workspace">
+        <img id="preview-img">
+        <div style="margin-top:10px; color:#007bff; font-weight:bold;">👇 辨識結果：</div>
+        <div id="char-list"></div>
+        <button onclick="location.reload()" style="margin-top:20px; padding:10px 30px; border-radius:20px; border:none; background:#eee;">🔄 重來</button>
+    </div>
+
+    <div id="final-card">
+        <div style="color:#888;">您選擇了：</div>
+        <div id="selected-char" class="big-font">?</div>
+        <div>
+            <button class="action-btn" style="background:#28a745;" onclick="playAudio()">🔊 聽發音</button>
+            <button class="action-btn" style="background:#17a2b8;" onclick="openDict()">📖 查解釋</button>
+        </div>
+        <button class="btn-close" onclick="closeCard()">↩️ 返回重選</button>
+    </div>
+
+    <canvas id="canvas" style="display:none;"></canvas>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/2.1.5/tesseract.min.js" onerror="log('⚠️ Tesseract 載入失敗，將僅使用雲端功能')"></script>
+
+    <script>
+        // ==================================================
+        // ★★★ 請在這裡填入您的 API KEY (保留引號) ★★★
+        // 例如: const MY_KEY = "K81234567889";
+        const MY_KEY = "請把您的Key貼在這裡"; 
+        // ==================================================
+
+        // --- 全域變數 ---
+        const logBox = document.getElementById('sys-log');
+        const workspace = document.getElementById('workspace');
+        const charList = document.getElementById('char-list');
+        const previewImg = document.getElementById('preview-img');
+        const finalCard = document.getElementById('final-card');
+        const selectedCharDiv = document.getElementById('selected-char');
+        const canvas = document.getElementById('canvas');
+        
+        let foundChars = new Set();
+        let currentSelection = "";
+
+        function log(msg) {
+            console.log(msg);
+            logBox.innerHTML += `> ${msg}<br>`;
+            logBox.scrollTop = logBox.scrollHeight;
+        }
+
+        // --- 1. 檔案處理 ---
+        function handleFile(files) {
+            if(files.length === 0) return;
+
+            // 檢查使用者有沒有填 Key
+            if(MY_KEY === "K83254970588957" || MY_KEY === "") {
+                alert("⚠️ 程式碼裡的 Key 還沒設定喔！請回到 GitHub 修改 index.html");
+                log("錯誤: API KEY 未設定");
+                return;
+            }
+
+            // UI 切換
+            document.getElementById('scan-btn').style.display = 'none';
+            workspace.style.display = 'block';
+            charList.innerHTML = "<div style='color:#888;'>⏳ 運算啟動中...</div>";
+            foundChars.clear();
+
+            const file = files[0];
+            log("讀取圖片...");
+            
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const img = new Image();
+                img.onload = function() {
+                    previewImg.src = e.target.result;
+                    startEngines(img);
+                };
+                img.src = e.target.result;
+            };
+            reader.readAsDataURL(file);
+        }
+
+        // --- 2. 多引擎啟動 ---
+        function startEngines(img) {
+            const base64 = compressImg(img, 1000);
+
+            // A. 本機
+            if(typeof Tesseract !== 'undefined') {
+                log("啟動本機引擎...");
+                runLocal(img);
+            } else {
+                log("跳過本機引擎 (未載入)");
+            }
+
+            // B. 雲端 (帶入 MY_KEY)
+            log("啟動雲端手寫引擎...");
+            runCloud(base64, '2', 'cloud-hand');
+
+            setTimeout(() => {
+                log("啟動雲端印刷引擎...");
+                runCloud(base64, '1', 'cloud-print');
+            }, 1200);
+        }
+
+        // --- 3. 本機辨識 ---
+        function runLocal(img) {
+            const ctx = canvas.getContext('2d');
+            canvas.width = img.width; canvas.height = img.height;
+            ctx.drawImage(img, 0, 0);
+
+            Tesseract.recognize(canvas, 'chi_tra')
+                .then(({ data: { text } }) => {
+                    log("本機辨識完成");
+                    parseText(text, 'local');
+                })
+                .catch(err => log("❌ 本機錯誤: " + err.message));
+        }
+
+        // --- 4. 雲端辨識 ---
+        function runCloud(base64, engineId, sourceTag) {
+            const formData = new FormData();
+            formData.append("base64Image", base64);
+            formData.append("language", "cht");
+            formData.append("OCREngine", engineId);
+            formData.append("isOverlayRequired", "false");
+            formData.append("apikey", MY_KEY); // 使用程式碼中的 Key
+
+            fetch("https://api.ocr.space/parse/image", {
+                method: "POST", body: formData
+            })
+            .then(res => res.json())
+            .then(data => {
+                if(data.IsErroredOnProcessing) {
+                    log(`❌ 雲端(${engineId})錯誤: ${data.ErrorMessage}`);
+                } else if (data.ParsedResults && data.ParsedResults.length > 0) {
+                    log(`✅ 雲端(${engineId}) 回傳成功`);
+                    parseText(data.ParsedResults[0].ParsedText, 'cloud');
+                }
+            })
+            .catch(err => log(`❌ 雲端連線失敗: ${err}`));
+        }
+
+        // --- 5. 解析與顯示 ---
+        function parseText(text, type) {
+            if(charList.innerHTML.includes('運算')) charList.innerHTML = "";
+
+            const matches = text.match(/[\u4e00-\u9fa5]/g);
+            if(!matches) return;
+
+            let newCount = 0;
+            matches.forEach(char => {
+                if(!foundChars.has(char)) {
+                    foundChars.add(char);
+                    newCount++;
+                    createBtn(char, type);
+                }
+            });
+            
+            if(newCount > 0) log(`+ 新增 ${newCount} 字 (${type})`);
+        }
+
+        function createBtn(char, type) {
+            const btn = document.createElement('div');
+            btn.className = 'char-btn';
+            btn.innerText = char;
+            
+            const tag = document.createElement('span');
+            tag.className = `tag ${type === 'cloud' ? 'tag-cloud' : 'tag-local'}`;
+            tag.innerText = type === 'cloud' ? '☁️' : '📱';
+            
+            btn.appendChild(tag);
+            btn.onclick = () => showFinal(char);
+            charList.appendChild(btn);
+        }
+
+        // --- 6. 互動 ---
+        function showFinal(char) {
+            currentSelection = char;
+            selectedCharDiv.innerText = char;
+            finalCard.style.display = 'flex';
+            setTimeout(playAudio, 300);
+        }
+
+        function closeCard() {
+            finalCard.style.display = 'none';
+        }
+
+        function playAudio() {
+            if(!currentSelection) return;
+            window.speechSynthesis.cancel();
+            const u = new SpeechSynthesisUtterance(currentSelection);
+            u.lang = 'zh-TW';
+            
+            const voices = window.speechSynthesis.getVoices();
+            const zh = voices.find(v => v.lang.includes('zh') || v.lang.includes('TW'));
+            if(zh) u.voice = zh;
+            
+            window.speechSynthesis.speak(u);
+        }
+
+        function openDict() {
+            if(currentSelection) window.open(`https://www.moedict.tw/${currentSelection}`, '_blank');
+        }
+
+        function compressImg(img, maxW) {
+            const ctx = canvas.getContext('2d');
+            let w = img.width; let h = img.height;
+            if(w > maxW) { h *= maxW/w; w = maxW; }
+            canvas.width = w; canvas.height = h;
+            ctx.drawImage(img, 0, 0, w, h);
+            return canvas.toDataURL('image/jpeg', 0.7);
+        }
+    </script>
+</body>
+</html>
